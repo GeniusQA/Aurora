@@ -1,4 +1,4 @@
-# Myspoti
+# Aurora
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](#install)
@@ -7,19 +7,20 @@
 and Wrapped, in a native Android app that blocks the ads and lets you download your music in
 lossless quality.
 
-> **This repository is a personal build of Myspoti.** The app is written by
-> [kota-zo](https://github.com/kota-zo/myspoti) and published under GPL-3.0; its source is the
-> one here. Builds made here are signed with their own key, are **not** published as GitHub
-> releases, and cannot install over an official Myspoti build — uninstall that one first.
+> **This repository is a personal build.** Aurora is
+> [Myspoti](https://github.com/kota-zo/myspoti), written by kota-zo and published under GPL-3.0;
+> the source here is theirs. Builds made here are signed with their own key, are **not**
+> published as GitHub releases, and cannot install over an official Myspoti build — uninstall
+> that one first.
 
 <p align="center">
-  <img src="docs/screenshots/banner.jpg" alt="Myspoti: home, player, artist and album screens" width="100%">
+  <img src="docs/screenshots/banner.jpg" alt="Aurora: home, player, artist and album screens" width="100%">
 </p>
 
-## Why Myspoti
+## Why Aurora
 
 **No ads, on a free account.** No audio ads, no video ads, no banners, and no 30-second break
-between songs: Myspoti switches off the ad breaks of Spotify's own player, so a free account
+between songs: Aurora switches off the ad breaks of Spotify's own player, so a free account
 plays like Premium — pick any song, skip as much as you like. No Premium, no modified Spotify
 app, nothing to root.
 
@@ -36,12 +37,12 @@ videos** and **song meanings from Genius**.
 
 ## What is it?
 
-Myspoti is a Spotify app for Android that you install yourself. You sign in with your usual
-Spotify account, on Spotify's own login page: Myspoti never sees your password. A free account
+Aurora is a Spotify app for Android that you install yourself. You sign in with your usual
+Spotify account, on Spotify's own login page: Aurora never sees your password. A free account
 is enough.
 
 Under the hood, the official Spotify Web Player plays the music, hidden inside the app, with
-your phone's DRM. Myspoti draws its own screens on top and drives it. Your plays are reported to
+your phone's DRM. Aurora draws its own screens on top and drives it. Your plays are reported to
 Spotify exactly as in a browser: they count for the artists, in your history and in your
 Wrapped.
 
@@ -90,7 +91,7 @@ Every build here is signed with the same key, so a newer one installs over the p
 **Offline**
 - Download songs, albums, playlists and Liked Songs, in **lossless FLAC** (CD or hi-res) or small
   AAC. The very recording is found by its ISRC on Tidal or Qobuz and checked before it is kept.
-- Downloads are encrypted and stay in Myspoti. Lists you downloaded stay in step with Spotify.
+- Downloads are encrypted and stay in Aurora. Lists you downloaded stay in step with Spotify.
 - Your local audio files too.
 
 **And also**
@@ -98,25 +99,18 @@ Every build here is signed with the same key, so a newer one installs over the p
 - 7 languages: English, French, German, Spanish, Italian, Portuguese and Greek.
 - Data saver, battery saver, AMOLED black, accent colour.
 
-## Screenshots
-
-| Home | Player | Artist | Album |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/home.jpg" width="200" alt="Home"> | <img src="docs/screenshots/player.jpg" width="200" alt="Player"> | <img src="docs/screenshots/artist.jpg" width="200" alt="Artist"> | <img src="docs/screenshots/album.jpg" width="200" alt="Album"> |
-
 ## Questions
 
-**Is it safe for my account?** Myspoti talks to Spotify the way its web player does, and you
+**Is it safe for my account?** Aurora talks to Spotify the way its web player does, and you
 sign in on Spotify's own page. Blocking ads is still against Spotify's Terms of Use (see the
 disclaimer below).
 
 **"Spotify refused to play this"?** Some new or free accounts get refused by Spotify. Settings →
-**Export a diagnostic report** and send it on [Discord](https://discord.gg/jXKnGVFnGS) or in an
-[issue](https://github.com/GeniusQA/Aurora/issues): it holds the app's recent log (what Spotify
+**Export a diagnostic report** and send it on [issue](https://github.com/GeniusQA/Aurora/issues): it holds the app's recent log (what Spotify
 answered) and your phone's model, never your password or your login tokens.
 
 **Do downloads count in my Wrapped?** No. Songs played from a download are not reported to
-Spotify; they count in Myspoti's own recap only. Streamed songs and music videos count as usual.
+Spotify; they count in Aurora's own recap only. Streamed songs and music videos count as usual.
 
 **What leaves my phone?** Your plays go to Spotify. Lyrics are looked up on lyrics sites, song
 meanings on Genius, translations on Google Translate, music videos on YouTube, and downloads on
@@ -162,16 +156,20 @@ cd base
 Live API tests (desktop Chrome with a signed-in Web Player):
 
 ```bash
-google-chrome --user-data-dir="$HOME/.myspoti-chrome" --remote-debugging-port=9222
+google-chrome --user-data-dir="$HOME/.Aurora-chrome" --remote-debugging-port=9222
 ./gradlew :host-cdp:test -Pcdp=http://localhost:9222
 ```
 
 **Builds are manual.** `.github/workflows/android.yml` runs on `workflow_dispatch` only: it
-builds the signed beta APK (`assembleRelease`, minified, `app.myspoti`) and uploads it as the
-run's artifact `Aurora-<version>`. Nothing runs on a push, and no release or tag is ever
+builds the signed beta APK (`assembleRelease`, minified, applicationId `app.myspoti`) and uploads
+it as the run's artifact `Aurora-<version>`. Nothing runs on a push, and no release or tag is ever
 created. The version name defaults to `1.0.0` and the version code is the run number, so builds
 install over each other without a new name each time. The optional `tests` checkbox runs the
 unit tests first.
+
+These builds carry **no update check**: `UPDATE_REPO` is left empty, so the app never asks GitHub
+for a newer release and never shows a "new update is available" window. Update by installing the
+next artifact over it.
 
 ## Credits
 

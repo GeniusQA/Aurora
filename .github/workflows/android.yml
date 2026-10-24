@@ -76,6 +76,10 @@ jobs:
       # is called, so a 1.0.0 build installs over the 1.0.0 build before it. The versionCODE is
       # still the run number: Android refuses an update whose code did not grow, so the name can
       # stay the same while the build moves on.
+      #
+      # -PupdateRepo is NOT passed: BuildConfig.UPDATE_REPO stays empty and the app checks no
+      # releases at all. With the version name back at 1.0.0, a published 2.0.2-beta.4 counted as
+      # "newer" and the beta offered an update downwards, over and over.
       - name: Signed beta APK
         env:
           MYSPOTI_KEYSTORE: ${{ runner.temp }}/release.jks
@@ -87,8 +91,7 @@ jobs:
           ./gradlew assembleRelease \
             -PappBeta=true \
             -PappVersionName="$VERSION" \
-            -PappVersionCode="$((1000 + GITHUB_RUN_NUMBER))" \
-            -PupdateRepo="$GITHUB_REPOSITORY"
+            -PappVersionCode="$((1000 + GITHUB_RUN_NUMBER))"
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/Aurora-$VERSION.apk"
 
       - uses: actions/upload-artifact@v7

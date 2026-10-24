@@ -382,10 +382,26 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
             media.active == false -> "not the active device"
             else -> null
         }
-        if (note == null) { mediaNote = null; return }
+        val now = System.currentTimeMillis()
+        if (note == null) {
+            mediaNote = null
+            // Everything agrees — but "the page plays and I hear nothing" reports could not be
+            // closed with that alone: a healthy element and one whose clock stands still read
+            // the same. This line, every MEDIA_TICK_MS while a song plays, gives the numbers the
+            // stalled-watcher's silence only implies (time advancing = the page really plays,
+            // so what is missing is the phone's own output, not the player).
+            if (now - mediaNoteAt >= MEDIA_TICK_MS) {
+                mediaNoteAt = now
+                bridge.logger?.invoke(
+                    "media playing: time=${media?.time} readyState=${media?.readyState} " +
+                        "level=${media?.level} own=${media?.own} playerVolume=${media?.playerVolume} " +
+                        "paused=${media?.paused} muted=${media?.muted} active=${media?.active}"
+                )
+            }
+            return
+        }
         // Said once when it appears, then every few seconds: one that lasts is a stall, one that
         // passes within a second is the ordinary gap between two songs.
-        val now = System.currentTimeMillis()
         if (note == mediaNote && now - mediaNoteAt < MEDIA_NOTE_REPEAT_MS) return
         mediaNote = note
         mediaNoteAt = now
@@ -1643,6 +1659,8 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
         const val DEVICE_WAIT_MS = 2_000L
         /** A media element that keeps disagreeing with the page is said again after this long. */
         const val MEDIA_NOTE_REPEAT_MS = 6_000L
+        /** While a song plays and everything agrees, the element's numbers are logged this often. */
+        const val MEDIA_TICK_MS = 15_000L
         const val READY_WAIT_MS = 30_000L
         /** After a reload, the song is asked for again that many times at most. */
         const val RESTORE_ATTEMPTS = 3
