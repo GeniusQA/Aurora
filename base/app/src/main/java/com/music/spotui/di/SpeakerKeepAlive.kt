@@ -22,19 +22,33 @@ object SpeakerKeepAlive {
     /** Pauses and song changes shorter than this keep the stream (and the output) open. */
     private const val LINGER_MS = 15_000L
 
+    /**
+     * Off while "the same volume, sometimes no sound at all" is open. This is the only audio
+     * track of ours that starts and stops with playback, and every start is a new USAGE_MEDIA
+     * AudioTrack: the audio patch is reconfigured while Chromium's own output (an AAudio stream)
+     * is running, and a sink that dies there looks exactly like the reports - the page's clock
+     * advances in real time, level 1.0, not muted, `music=true`, the route on the speaker, and
+     * nothing is heard until something recreates the sink. Its whole purpose is a cosmetic one
+     * (a "bop" between two songs), so it is turned off for the test: true brings it back.
+     */
+    private const val ENABLED = false
+
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var track: AudioTrack? = null
     @Volatile private var feeder: Thread? = null
     private val release = Runnable { stop() }
 
     /** [playingHere]: music plays on this phone (not on a Connect device). */
-    fun set(playingHere: Boolean) = main.post {
-        if (playingHere) {
-            main.removeCallbacks(release)
-            start()
-        } else if (track != null) {
-            main.removeCallbacks(release)
-            main.postDelayed(release, LINGER_MS)
+    fun set(playingHere: Boolean) {
+        if (!ENABLED) return
+        main.post {
+            if (playingHere) {
+                main.removeCallbacks(release)
+                start()
+            } else if (track != null) {
+                main.removeCallbacks(release)
+                main.postDelayed(release, LINGER_MS)
+            }
         }
     }
 
