@@ -1,10 +1,13 @@
 package com.music.spotui.di
 
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioRouting
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 
 /**
  * The "bop" between two songs on the phone's speaker: the Web Player closes its audio
@@ -14,6 +17,7 @@ import android.os.Looper
  * across the change. It asks for no audio focus and plays nothing audible.
  */
 object SpeakerKeepAlive {
+    private const val TAG = "MspPlayer"
     private const val RATE = 48_000
     /** Pauses and song changes shorter than this keep the stream (and the output) open. */
     private const val LINGER_MS = 15_000L
@@ -54,11 +58,30 @@ object SpeakerKeepAlive {
         }.getOrNull() ?: return
         track = t
         runCatching { t.play() }
+        // Where this app's sound actually goes. The status line lists the outputs that EXIST;
+        // this is the route the framework really gave a track of ours, which the WebView's own
+        // track shares as the same app and usage. "The page plays, nothing is heard" is settled
+        // here: a route that is not the speaker says where the music went.
+        Log.i(TAG, "keep-alive track: routed to ${describe(t.routedDevice)} session=${t.audioSessionId}")
+        runCatching {
+            t.addOnRoutingChangedListener(object : AudioRouting.OnRoutingChangedListener {
+                override fun onRoutingChanged(router: AudioRouting?) {
+                    Log.i(TAG, "keep-alive track: routed to ${describe((router as? AudioTrack)?.routedDevice)}")
+                }
+            }, main)
+        }
         feeder = Thread({
             val zeros = ByteArray(size)
             // Blocking writes pace themselves on the output: no busy loop.
             while (track === t) if (t.write(zeros, 0, zeros.size) < 0) break
         }, "speaker-keepalive").apply { isDaemon = true; start() }
+    }
+
+    /** `type2(Xiaomi Speaker)` for the log: the device type and its name when it has one. */
+    private fun describe(device: AudioDeviceInfo?): String {
+        if (device == null) return "unknown"
+        val name = runCatching { device.productName?.toString().orEmpty() }.getOrDefault("")
+        return "type${device.type}${if (name.isBlank()) "" else "($name)"}"
     }
 
     private fun stop() {

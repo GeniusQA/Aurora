@@ -119,6 +119,10 @@ object MyspotiRuntime {
         val vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
         val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
         val mute = runCatching { am.isStreamMute(android.media.AudioManager.STREAM_MUSIC) }.getOrDefault(false)
+        // The framework's own answer to "is any audio playing": false while the page's element
+        // really runs means the sound never reached the audio system at all, true means it is in
+        // the mixer and what is missing is the output (a duck, a muted route, a ROM that holds it).
+        val music = runCatching { am.isMusicActive }.getOrDefault(false)
         val out = am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).firstOrNull {
             it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                 it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET ||
@@ -126,7 +130,7 @@ object MyspotiRuntime {
                 it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                 it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
         }
-        "stream=$vol/$max${if (mute) "(muted)" else ""} out=${out?.let { "type${it.type}" } ?: "speaker"}"
+        "stream=$vol/$max${if (mute) "(muted)" else ""} music=$music out=${out?.let { "type${it.type}" } ?: "speaker"}"
     }.getOrDefault("stream=?")
 
 
