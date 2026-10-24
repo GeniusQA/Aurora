@@ -1,31 +1,26 @@
-# Every push and pull request builds the debug APK and runs the unit tests; a manual run
-# (Actions > Android > Run workflow) builds the signed beta APK.
+# Builds the signed beta APK, by hand: Actions > Android > Run workflow. That is the only
+# trigger — nothing runs on a push, no release and no tag is ever created.
 #
-# Nothing is published: no GitHub release, no tag, no release notes. The APK is the artifact of
-# the run (run page > Artifacts), kept 14 days.
+# The APK is the artifact of the run (run page > Artifacts), kept 14 days: download it there
+# and install it over the previous beta. Nothing else is published.
 #
-# Why it is one job and not two: the build job and the release job each paid for a checkout,
-# a JDK, the Android SDK and the whole Gradle dependency download, and neither could see the
-# other's compiled classes — 2m59s + 4m23s for one APK. Here the same Gradle run does the whole
-# thing, and the dependency and build caches are restored across runs, so a run that changes no
-# version pays for the compile alone.
+# One job, one Gradle run: the checkout, the JDK, the Android SDK and the Gradle caches are
+# paid for once, and ~/.gradle/caches (dependencies, build cache) and ~/.gradle/wrapper (the
+# Gradle distribution) are restored between runs, so a build that changes no version pays for
+# the minified release compile alone.
 name: Android
 
 on:
-  push:
-    branches: [master, main]
-  pull_request:
   workflow_dispatch:
     inputs:
       version:
         description: 'versionName, e.g. 2.0.2-beta.5 (empty: the newest section of CHANGELOG.md)'
         required: false
         default: ''
-
-# A push to a branch drops the run it replaces (a tag or a manual run is left alone).
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+      tests:
+        description: 'Run the unit tests first (slower)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,9 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # "cache: gradle" keeps ~/.gradle/caches (dependencies, the build cache) and
-      # ~/.gradle/wrapper (the Gradle distribution itself) between runs. A tag-run could not
-      # save it before, which is why every build downloaded everything again.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -54,48 +46,35 @@ jobs:
         with:
           packages: "platforms;android-37.0 build-tools;36.0.0"
 
-      # What is built: a plain push or a pull request builds the debug APK, a manual run or a
-      # "v*" tag builds the signed beta APK.
+      # A beta is a release build (minified), under the "app.myspoti" id: it installs over the
+      # beta before it. The version default is whatever CHANGELOG.md leads with.
       - name: Version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
-          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="$(grep -m1 '^## ' ../CHANGELOG.md | sed 's/^## //')"
-          fi
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            SIGNED=true
-          else
-            SIGNED=false
-          fi
+          VERSION="${INPUT_VERSION:-$(grep -m1 '^## ' ../CHANGELOG.md | sed 's/^## //')}"
+          case "$VERSION" in
+            *-*) ;;
+            *) echo "::error::$VERSION is not a beta version (needs a suffix like -beta.5)"; exit 1 ;;
+          esac
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
-          echo "Building $VERSION (signed: $SIGNED)"
+          echo "Building $VERSION"
 
-      # The beta key, from the repository secrets. Only a signed build needs it, so a pull
-      # request from a fork (which gets no secrets) still builds.
+      - name: Unit tests
+        if: github.event.inputs.tests == 'true'
+        run: ./gradlew testDebugUnitTest :api:test :api-spotify:test :host-cdp:test
+
+      # The beta key, from the repository secrets (C:\Users\Administrator\.aurora\beta.jks on
+      # the machine that set them up: keep it, or no later build can update an installed beta).
       - name: Signing key
-        if: steps.version.outputs.signed == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.MYSPOTI_KEYSTORE_BASE64 }}
         run: |
           test -n "$KEYSTORE_BASE64" || { echo "::error::MYSPOTI_KEYSTORE_BASE64 secret missing"; exit 1; }
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
-      # The unit tests run with the push build, where a regression is worth catching: a manual
-      # run is a deliberate build of a commit that already passed them, and the minified APK it
-      # makes is the whole cost worth paying there.
-      - name: Unit tests and debug APK
-        if: steps.version.outputs.signed != 'true'
-        run: ./gradlew testDebugUnitTest :api:test :api-spotify:test :host-cdp:test assembleDebug
-
       - name: Signed beta APK
-        if: steps.version.outputs.signed == 'true'
         env:
           MYSPOTI_KEYSTORE: ${{ runner.temp }}/release.jks
           MYSPOTI_KEYSTORE_PASSWORD: ${{ secrets.MYSPOTI_KEYSTORE_PASSWORD }}
@@ -110,17 +89,8 @@ jobs:
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/myspoti-$VERSION.apk"
 
       - uses: actions/upload-artifact@v7
-        if: steps.version.outputs.signed == 'true'
         with:
           name: myspoti-${{ steps.version.outputs.version }}
           path: base/app/build/outputs/apk/release/myspoti-*.apk
-          if-no-files-found: error
-          retention-days: 14
-
-      - uses: actions/upload-artifact@v7
-        if: steps.version.outputs.signed != 'true'
-        with:
-          name: myspoti-debug
-          path: base/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

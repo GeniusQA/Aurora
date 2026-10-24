@@ -2,6 +2,11 @@
 
 Each release on GitHub shows its section below. The app shows it too when it offers the update. Every detail: [docs/CHANGELOG-full.md](docs/CHANGELOG-full.md).
 
+## 2.0.2-beta.5
+
+- ⚡ **Playback starts at once, and it says why when it does not**: the phone's Connect device is claimed before the first tap, so the first sound of a fresh page comes about 2.4 s after it instead of 8.4 s.
+- 🩺 **"It plays but I hear nothing"**: the diagnostic report now says what the player's own audio element is doing — whether it is there at all, whether it is paused, its volume against the player's, its buffer — and what the phone's media stream is: its volume, whether it is muted, and whether the sound goes to a Bluetooth device. Playback itself is unchanged; this is there to name the cause.
+
 ## 2.0.2-beta.4
 
 - ⚡ **The first play of a page starts at once**: the phone's Spotify Connect device is registered and claimed as soon as the player page loads, instead of during the tap. A fresh page used to spend its first play on a device it did not know yet ("Device not found") and on a transfer, measured 8.4 s from tap to sound.
