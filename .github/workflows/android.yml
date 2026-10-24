@@ -14,9 +14,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'versionName, e.g. 2.0.2-beta.5 (empty: the newest section of CHANGELOG.md)'
-        required: false
-        default: ''
+        description: 'versionName, e.g. 2.0.2-beta.5 (needs a "-beta.N" suffix)'
+        required: true
       tests:
         description: 'Run the unit tests first (slower)'
         type: boolean
@@ -47,13 +46,14 @@ jobs:
           packages: "platforms;android-37.0 build-tools;36.0.0"
 
       # A beta is a release build (minified), under the "app.myspoti" id: it installs over the
-      # beta before it. The version default is whatever CHANGELOG.md leads with.
+      # beta before it. The version is the one typed in, never read from a file: this workflow
+      # keeps no changelog and appends nothing anywhere.
       - name: Version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${INPUT_VERSION:-$(grep -m1 '^## ' ../CHANGELOG.md | sed 's/^## //')}"
+          VERSION="$(printf '%s' "$INPUT_VERSION" | tr -d '[:space:]')"
           case "$VERSION" in
             *-*) ;;
             *) echo "::error::$VERSION is not a beta version (needs a suffix like -beta.5)"; exit 1 ;;

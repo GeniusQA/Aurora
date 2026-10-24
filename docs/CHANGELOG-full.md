@@ -1,6 +1,6 @@
 # Myspoti — detailed changelog
 
-Every change, release by release. The short version is in [CHANGELOG.md](../CHANGELOG.md), which the app and the GitHub releases show.
+Every change, release by release, up to the version this tree was taken from. Nothing is added here for the builds made from this repository: they carry no release notes.
 
 ## 2.0.1
 
