@@ -122,6 +122,9 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
     private val _deviceReady = MutableStateFlow(false)
     val deviceReady: StateFlow<Boolean> = _deviceReady
 
+    /** A page whose device never registered: commands stop waiting for it (cleared on reload). */
+    @Volatile private var deviceWaitGivenUp = false
+
     /** The song unheard on this phone on purpose (a music video's own sound plays, see [setHushed]). */
     @Volatile private var hushed = false
 
@@ -178,6 +181,7 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
                     app.myspoti.spotify.bridge.AdBlock.ahead.value = null
                     // The new page registers its own device: commands wait for it (see [awaitDevice]).
                     _deviceReady.value = false
+                    deviceWaitGivenUp = false
                     // The page went away (reloaded by Android, the WebView or the host): what
                     // played then is picked up again once the new page is there.
                     // A page that unloads reports "nothing plays" first: the song before that counts.
@@ -357,8 +361,9 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
         )
     }
 
-    /** What [reportMedia] said last, so a report says it once and not every 2 s. */
+    /** What [reportMedia] said last, when, so a report is not repeated every 2 s but a lasting one is seen. */
     @Volatile private var mediaNote: String? = null
+    @Volatile private var mediaNoteAt = 0L
 
     /**
      * The element against what the page says it plays, in the diagnostic log. "No sound" reports
@@ -378,8 +383,12 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
             else -> null
         }
         if (note == null) { mediaNote = null; return }
-        if (note == mediaNote) return
+        // Said once when it appears, then every few seconds: one that lasts is a stall, one that
+        // passes within a second is the ordinary gap between two songs.
+        val now = System.currentTimeMillis()
+        if (note == mediaNote && now - mediaNoteAt < MEDIA_NOTE_REPEAT_MS) return
         mediaNote = note
+        mediaNoteAt = now
         bridge.logger?.invoke(
             "media: $note while the page plays ${s.item?.name} " +
                 "(level=${media?.level} own=${media?.own} paused=${media?.paused} muted=${media?.muted} " +
@@ -1239,9 +1248,6 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
 
     /** A play sent to the page; [refusable]: the user's own, whose refusal walks [onRefused]'s steps. */
     private suspend fun playNow(contextUri: Uri, trackUri: Uri? = null, index: Int? = null, positionMs: Long? = null, order: List<Uri>? = null, refusable: Boolean = false) {
-        // Waited for BEFORE the fade below: a level held low while the device registers would
-        // be silence for that whole wait, where the page has nothing to play anyway.
-        awaitDevice()
         // A new song picked (or the intent itself played): any earlier skip is over.
         if (trackUri == null || trackUri != liveIntent()?.item?.uri) intent = null
         lastOrder = order?.let { contextUri to it }
@@ -1278,12 +1284,13 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
     /**
      * Waits for the page's Connect device to be registered, at most [DEVICE_WAIT_MS]. A command
      * sent before it is refused ("No such device") and costs a round trip plus a retry, for a
-     * command that had no way to work; the page registers its device 1.4 s or more after the
-     * bridge says "ready", and claims it at the same time (see player-bridge.js). Returns at
-     * once when the device is there, i.e. on every command but the first of a page.
+     * command that had no way to work; the page registers its device a second or more after the
+     * bridge says "ready" (measured 1.4 s, and 0.8 s in 2.0.2-beta.5), and claims it at the same
+     * time (see player-bridge.js). Returns at once when the device is there, i.e. on every
+     * command but the first of a page.
      */
     private suspend fun awaitDevice() {
-        if (_deviceReady.value) return
+        if (_deviceReady.value || deviceWaitGivenUp) return
         // Asked rather than only waited for: a page whose "device" message was lost still
         // says so, one cheap call.
         if (withTimeoutOrNull(DEVICE_WAIT_MS) { _deviceReady.first { it } } != null) return
@@ -1291,15 +1298,26 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
         if ((page as? JsonObject)?.get("ready")?.jsonPrimitive?.booleanOrNull == true) {
             bridge.logger?.invoke("device registered (asked for: its message was not seen)")
             _deviceReady.value = true
+            return
         }
+        // A page that never registers must not make every later command wait again.
+        deviceWaitGivenUp = true
+        bridge.logger?.invoke("device still not registered after ${DEVICE_WAIT_MS} ms: commands go out as they are")
     }
 
     /**
      * A playback command, sent again when the page was not able to take it yet: a page just
      * (re)loaded says "ready" a moment before Spotify Connect knows its device ("No such
      * device"), and a reload under way refuses everything ("not ready").
+     *
+     * Every command goes through here, the first of a page included: the skip the app sends at
+     * start-up used to leave 0.2 s after "ready", was refused with "No such device", and the
+     * second one it sent a second later landed on the song after the one asked for (measured,
+     * 2.0.2-beta.5: `player.next` 404 → sent again → two songs skipped, and the first sound
+     * 8 s after the process started).
      */
     private suspend fun command(method: String, args: JsonObject = JsonObject(emptyMap()), timeoutMs: Long = 20_000): kotlinx.serialization.json.JsonElement {
+        awaitDevice()
         var attempt = 0
         while (true) {
             try {
@@ -1367,9 +1385,6 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
             return
         }
         pageSuspect = false
-        // A page that has just loaded registers its device after saying "ready": a resume sent
-        // before that is refused and retried, for a command that could not have worked.
-        awaitDevice()
         val quiet = _adPlaying.value || adMuted || crossfadeArmed || _state.value?.isPaused == false || lastMedia?.active == false
         if (quiet) { command("player.resume"); return }
         fadeBackTo = lastMedia?.own?.takeIf { it > 0.01 } ?: 1.0
@@ -1626,6 +1641,8 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
         const val COMMAND_RETRY_MS = 350L
         /** How long a command waits for the page's Connect device to be registered (see [awaitDevice]). */
         const val DEVICE_WAIT_MS = 2_000L
+        /** A media element that keeps disagreeing with the page is said again after this long. */
+        const val MEDIA_NOTE_REPEAT_MS = 6_000L
         const val READY_WAIT_MS = 30_000L
         /** After a reload, the song is asked for again that many times at most. */
         const val RESTORE_ATTEMPTS = 3

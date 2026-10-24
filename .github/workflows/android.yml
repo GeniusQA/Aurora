@@ -2,7 +2,8 @@
 # trigger — nothing runs on a push, no release and no tag is ever created.
 #
 # The APK is the artifact of the run (run page > Artifacts), kept 14 days: download it there
-# and install it over the previous beta. Nothing else is published.
+# and install it over the previous build. Nothing else is published, nothing is written to a
+# changelog.
 #
 # One job, one Gradle run: the checkout, the JDK, the Android SDK and the Gradle caches are
 # paid for once, and ~/.gradle/caches (dependencies, build cache) and ~/.gradle/wrapper (the
@@ -14,8 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'versionName, e.g. 2.0.2-beta.5 (needs a "-beta.N" suffix)'
-        required: true
+        description: 'versionName (stays 1.0.0: only the versionCode grows, so builds still install over each other)'
+        required: false
+        default: '1.0.0'
       tests:
         description: 'Run the unit tests first (slower)'
         type: boolean
@@ -45,19 +47,15 @@ jobs:
         with:
           packages: "platforms;android-37.0 build-tools;36.0.0"
 
-      # A beta is a release build (minified), under the "app.myspoti" id: it installs over the
-      # beta before it. The version is the one typed in, never read from a file: this workflow
-      # keeps no changelog and appends nothing anywhere.
+      # The version is the one typed in, never read from a file: this workflow keeps no
+      # changelog and appends nothing anywhere.
       - name: Version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           VERSION="$(printf '%s' "$INPUT_VERSION" | tr -d '[:space:]')"
-          case "$VERSION" in
-            *-*) ;;
-            *) echo "::error::$VERSION is not a beta version (needs a suffix like -beta.5)"; exit 1 ;;
-          esac
+          VERSION="${VERSION:-1.0.0}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building $VERSION"
 
@@ -74,6 +72,10 @@ jobs:
           test -n "$KEYSTORE_BASE64" || { echo "::error::MYSPOTI_KEYSTORE_BASE64 secret missing"; exit 1; }
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
+      # -PappBeta=true: the "app.myspoti" id and the "Myspoti Beta" label, whatever the version
+      # is called, so a 1.0.0 build installs over the 1.0.0 build before it. The versionCODE is
+      # still the run number: Android refuses an update whose code did not grow, so the name can
+      # stay the same while the build moves on.
       - name: Signed beta APK
         env:
           MYSPOTI_KEYSTORE: ${{ runner.temp }}/release.jks
@@ -83,14 +85,15 @@ jobs:
         run: |
           VERSION='${{ steps.version.outputs.version }}'
           ./gradlew assembleRelease \
+            -PappBeta=true \
             -PappVersionName="$VERSION" \
             -PappVersionCode="$((1000 + GITHUB_RUN_NUMBER))" \
             -PupdateRepo="$GITHUB_REPOSITORY"
-          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/myspoti-$VERSION.apk"
+          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/Aurora-$VERSION.apk"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: myspoti-${{ steps.version.outputs.version }}
-          path: base/app/build/outputs/apk/release/myspoti-*.apk
+          name: Aurora-${{ steps.version.outputs.version }}
+          path: base/app/build/outputs/apk/release/Aurora-*.apk
           if-no-files-found: error
           retention-days: 14

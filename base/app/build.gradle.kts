@@ -23,7 +23,12 @@ android {
     // signed with their own key, as "Myspoti".
     // Local builds (no version given) are on the beta side, like the phone test builds.
     val version = (findProperty("appVersionName") as String?) ?: "2.0.1"
-    val beta = findProperty("appVersionName") == null || version.contains("-")
+    // The channel decides the application id, the label and the key: a beta ("app.myspoti",
+    // "Myspoti Beta") and a stable build ("app.myspoti.stable", "Myspoti") install side by side.
+    // A "-beta.N" version is a beta; a build whose version has no suffix says so itself with
+    // -PappBeta=true, so "1.0.0" can be a beta too (CI builds every beta as one).
+    val beta = (findProperty("appBeta") as String?)?.toBooleanStrictOrNull()
+        ?: (findProperty("appVersionName") == null || version.contains("-"))
     defaultConfig {
         applicationId = if (beta) "app.myspoti" else "app.myspoti.stable"
         manifestPlaceholders["appLabel"] = if (beta) "Myspoti Beta" else "Myspoti"

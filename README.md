@@ -47,9 +47,10 @@ Wrapped.
 
 ## Install
 
-1. Open **Actions → Android → Run workflow**, give the version (e.g. `2.0.2-beta.5`) and let it
-   finish, then download `myspoti-<version>` from the run's **Artifacts**. No release and no tag
-   is created; the artifact is the APK (kept 14 days).
+1. Open **Actions → Android → Run workflow** and let it finish, then download
+   `Aurora-1.0.0` from the run's **Artifacts**. No release and no tag is created; the artifact is
+   the APK (kept 14 days). The version name stays `1.0.0` — only the version code grows, so every
+   build installs over the one before it.
 2. Open the downloaded APK on the phone (Android 10 or later). Android asks once to allow
    installs from your browser or file manager.
 3. Tap **Log in with Spotify** and sign in.
@@ -167,8 +168,10 @@ google-chrome --user-data-dir="$HOME/.myspoti-chrome" --remote-debugging-port=92
 
 **Builds are manual.** `.github/workflows/android.yml` runs on `workflow_dispatch` only: it
 builds the signed beta APK (`assembleRelease`, minified, `app.myspoti`) and uploads it as the
-run's artifact. Nothing runs on a push, and no release or tag is ever created. The optional
-`tests` checkbox runs the unit tests first.
+run's artifact `Aurora-<version>`. Nothing runs on a push, and no release or tag is ever
+created. The version name defaults to `1.0.0` and the version code is the run number, so builds
+install over each other without a new name each time. The optional `tests` checkbox runs the
+unit tests first.
 
 ## Credits
 
