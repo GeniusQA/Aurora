@@ -404,6 +404,9 @@ object SongPlayer {
         bufferingState.value = s.isBuffering
         playing = resolvePlaying(s.isPaused)
         SpeakerKeepAlive.set(playing && _activeDevice.value == null)
+        // The focus the WebView's audio does not take on some ROMs: without it the page plays
+        // and the phone stays silent (see AudioFocus).
+        AudioFocus.set(playing && _activeDevice.value == null)
         durationMs = item?.durationMs ?: 0L
         val reported = s.positionAt(System.currentTimeMillis())
         // Keep the running clock when the player only nudges it (< 1 s).
@@ -1505,6 +1508,8 @@ object SongPlayer {
         // The local player keeps the output open itself; the engine's states, which
         // would close the silent stream, are ignored while it plays.
         SpeakerKeepAlive.set(false)
+        // The local player asks for its own focus; the engine's is given back.
+        AudioFocus.set(false)
     }
 
     private var localStartedAt = 0L
