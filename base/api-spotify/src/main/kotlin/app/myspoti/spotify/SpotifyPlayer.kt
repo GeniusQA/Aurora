@@ -336,6 +336,8 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
         /** What the page player itself is set to; null when the page did not say. */
         val playerVolume: Double?,
         val active: Boolean?,
+        /** 4 = enough data for the element to play; -1 when the page did not say. */
+        val readyState: Int = -1,
     )
 
     private suspend fun readMedia(): Media? {
@@ -351,6 +353,37 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
             // The device list is read at most every few seconds in the page: what it did not
             // answer this time is what it answered last time.
             active = p("active")?.booleanOrNull ?: lastMedia?.active,
+            readyState = p("readyState")?.doubleOrNull?.toInt() ?: -1,
+        )
+    }
+
+    /** What [reportMedia] said last, so a report says it once and not every 2 s. */
+    @Volatile private var mediaNote: String? = null
+
+    /**
+     * The element against what the page says it plays, in the diagnostic log. "No sound" reports
+     * could not be told apart: every state line said `paused=false`, the page really played, and
+     * nothing in the log said whether the element was moving, at what level, or even there at all
+     * ([readMedia] answering nothing is silent on purpose). One line, whenever the disagreement
+     * changes.
+     */
+    private fun reportMedia(s: PlayerState?, media: Media?) {
+        if (s == null || s.isPaused) { mediaNote = null; return }
+        val note = when {
+            media == null -> "no media element"
+            media.paused -> "element paused"
+            media.own > 0.001 && media.level < media.own * 0.5 -> "level ${media.level} of ${media.own}"
+            media.playerVolume != null && media.playerVolume <= 0.0 -> "the player's own volume is 0"
+            media.active == false -> "not the active device"
+            else -> null
+        }
+        if (note == null) { mediaNote = null; return }
+        if (note == mediaNote) return
+        mediaNote = note
+        bridge.logger?.invoke(
+            "media: $note while the page plays ${s.item?.name} " +
+                "(level=${media?.level} own=${media?.own} paused=${media?.paused} muted=${media?.muted} " +
+                "readyState=${media?.readyState} time=${media?.time} playerVolume=${media?.playerVolume} active=${media?.active})"
         )
     }
 
@@ -421,6 +454,7 @@ class SpotifyPlayer(private val bridge: Bridge, private val scope: CoroutineScop
             val media = read.getOrNull()
             lastMedia = media
             val s = _state.value
+            reportMedia(s, media)
             preloadNextSong(s, media)
             tickCrossfade(s, media, now)
             if (tick % VOLUME_CHECK_TICKS == 0) guardVolume(s, media)

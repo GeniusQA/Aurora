@@ -89,7 +89,8 @@ object MyspotiRuntime {
                     else -> when (spotify.signedInHint()) { true -> "signed-in"; false -> "anonymous"; null -> "unknown" }
                 }
                 val line = "status ready=${spotify.ready.value} session=$session " +
-                    "track=${s?.item?.name} paused=${s?.isPaused} buffering=${s?.isBuffering} url=${host.url.value.take(60)}"
+                    "track=${s?.item?.name} paused=${s?.isPaused} buffering=${s?.isBuffering} " +
+                    "${audioSummary(context)} url=${host.url.value.take(60)}"
                 if (line != last) {
                     last = line
                     Logbook.log(line)
@@ -107,6 +108,27 @@ object MyspotiRuntime {
     /** True when the Web Player holds a signed-in user's token (not an anonymous one). */
     /** Never while a Spotify sign-in page is open: whatever a token says, the user is mid sign-in. */
     suspend fun isSignedIn(): Boolean = !host.loginRequired.value && spotify.isSignedIn()
+
+    /**
+     * The phone's own media stream and where it goes, in the status line: a "no sound" report
+     * has to say whether the page played into a muted phone stream (0/15, a Bluetooth device
+     * that went away) instead of into the speaker.
+     */
+    private fun audioSummary(context: Context): String = runCatching {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        val mute = runCatching { am.isStreamMute(android.media.AudioManager.STREAM_MUSIC) }.getOrDefault(false)
+        val out = am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).firstOrNull {
+            it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it.type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
+        }
+        "stream=$vol/$max${if (mute) "(muted)" else ""} out=${out?.let { "type${it.type}" } ?: "speaker"}"
+    }.getOrDefault("stream=?")
+
 
     /**
      * Waits for a signed-in session (a non-anonymous token) up to [timeoutMs]. The login flow is
